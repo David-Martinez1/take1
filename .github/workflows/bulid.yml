@@ -1,28 +1,50 @@
-name: Build and Deploy to Heroku
+name: CI
 
 on:
   push:
-    branches:
-      - main
-
+    branches: [ main ]
+    
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    services:
+      mongo:
+        image: mongo
+        ports:
+          - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: user
+          MONGO_INITDB_ROOT_PASSWORD: password
+        options: >-
+          --health-cmd "mongo --username user --password password --eval 'db.adminCommand("ping")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+    - name: Checkout code
+      uses: actions/checkout@v2
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'
 
-      - name: Build and test Docker image
-        run: |
-          docker build . -t my-app
-          docker run my-app pytest tests/
+    - name: Install dependencies
+      run: npm install
 
-      - name: Log in to Heroku
-        uses: akhileshns/heroku-deploy@v3.10.6
-        with:
-          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
-          heroku_app_name: your-heroku-app-name
-          docker_image: my-app
+    - name: Run tests
+      run: npm test
+
+    - name: Build Docker image
+      run: docker build -t my-app .
+
+    - name: Deploy to Render
+      env:
+        RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      run: |
+        curl -X POST "https://api.render.com/deploy/svc-XXXXXX" \
+        -H "Authorization: Bearer $RENDER_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d '{"branch":"main"}'
